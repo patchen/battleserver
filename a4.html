@@ -1,0 +1,131 @@
+<head>
+<title>
+      CSC 209H: Assignment 4 -- Network Programming
+    </title>
+  </head>
+
+  <body>
+
+<div class="title">
+    <h1>
+      Assignment A4: Network Programming
+    </h1>
+    </div>
+
+
+<div class="content">
+	
+<p><b>Due</b>: Electronically, by 10:00 PM on August 13, 2012</p>
+	
+
+<h2>Introduction</h2>
+
+<p>In this assignment, you'll be working with Unix sockets to build a server for a text-based battle game. You will <b>not</b> write a client.</p>
+
+<p>The inspiration for this assignment comes from an old game called ... actually, wait a sec... how about if someone can figure out the game, I bring food to our final lecture? Good luck!</p>
+
+<h2>Playing the Game</h2>
+
+<p>Before detailing your tasks, let's first play the game to see how it works. On redwolf port 8888, I have a battle server running. To connect to it, type the following at the shell: <tt>stty -icanon; /bin/nc redwolf.cdf.utoronto.ca 8888</tt>. This carries out two commands: <tt>stty</tt> to prevent the terminal driver from waiting for complete lines of text (you'll see why soon), and <tt>nc</tt> to connect to the battle server.</p>
+
+<p>Once you've connected, you'll be asked for your name. Type something (Dan, for example) and hit enter. You'll then be told that you are waiting for an opponent, and you will be stuck there until someone else connects to the server. So, instead of waiting, just open another terminal and connect to redwolf port 8888 from there too. (If you're using ssh, you can just start a new ssh instance. You could also job control back and forth between two <tt>nc</tt> instances running on the same terminal.) You will be asked for the name of this second client; type something (Joe, for example) and hit enter.</p>
+
+<p>At this point, two players are available, so they will engage in combat, with one of the two players randomly earning first strike. Prior to each match, each player is given a random number of hitpoints and a random number of powermoves. Players repeatedly exchange attacks, until one of the players loses by virtue of having 0 hitpoints remaining.</p>
+
+<p>There are two kinds of attacks: you can press <tt>a</tt> for a regular attack or <tt>p</tt> for a powermove. Regular attacks are weak but guaranteed to hit; powermoves are strong, but not guaranteed to hit, and limited in number. Also, you'll notice that a player is unaware of the quantity of powermoves held by their opponent. So you never know whether your opponent is saving a powermove for later or they are plumb out of powermoves. Strategy! Are you loving this yet???</p>
+
+<p>As per the menus printed by the battle server, the other available option is to <tt>(y)ell</tt> something. Only the currently-attacking player can yell, and yelling does not take up a turn. It's like in-game messaging. I trust we will all play nice.</p>
+
+<p>Similar to when you entered your name, no text is yelled to your opponent until you hit enter. That is, the server is buffering a full line. Remember that <tt>stty -icanon</tt> command we ran earlier? That command causes each character to be fired out as soon as you press it at the keyboard. (You noticed this when pressing <tt>a</tt> or <tt>p</tt>; the action happened immediately, and you didn't have to hit enter first.) So it's the server here that's buffering the yell text until it gets a newline.</p>
+
+<p>Mess around with attacking, powermoving, and yelling, until the match is over. At that point, Dan and Joe are still connected, waiting for new opponents. Importantly, you'll notice that they won't fight again; they'll just sit there waiting for someone else to come online. (Consider what would happen if they were allowed to fight again: after their first match, they'd likely be the only two people free and would fight again and again and again.) So, add a third client, and that third client will then engage one of the two existing clients. Add a fourth client, and they will engage the lone player not currently fighting. This also shows that multiple matches can occur simultaneously and independently. The server never blocks waiting for anything; only matches with new action are serviced.</p>
+
+<p>The last thing I'd like to highlight here is what happens when a client drops. Initiate a match between two players, and then hit ctrl+c on one of them to kill their <tt>nc</tt> process. Switch to the remaining client's window; you'll notice that this client is deemed the winner, and that they go back to seeking another opponent.</p>
+
+<p>When you're finished, type <tt>stty icanon</tt> at the shell to return the terminal back to canonical mode. If you don't do this, programs will work in unexpected ways. (For example, do a <tt>stty -icanon</tt> to get back to noncanonical mode, then type <tt>cat</tt>. You'll notice that instead of waiting for full lines, each character is echoed by <tt>cat</tt> as soon as you type it.)</p>
+
+<h2>Your Tasks</h2>
+
+<p>Your task is to implement the battle server, as outlined above and further detailed below. You must support the same functionality offered by the sample implementation on redwolf port 8888.</p>
+
+<h3>Login</h3>
+
+<p>When a new client arrives, add them to the end of the active clients list, and ask for and store their name. Tell the new client that they are awaiting an opponent; tell everyone else that someone new has entered the arena. Then, scan the connected clients; if a suitable client is available, start a match with the newly connected client.</p>
+
+<h3>Matching</h3>
+
+<p>A client should never wait for a match if a suitable opponent exists. Consider clients A and B:
+<ul>
+<li>If A or B is currently in a match, then A and B cannot be matched
+<li>If A last engaged B, and B last engaged A, then A and B cannot be matched
+<li>Otherwise, they can be matched
+</ul>
+In particular, new matches are possible when a new client logs-in and when an existing match terminates by completing normally or due to a client dropping. Suitable partners should be searched starting from the beginning of the client list. Once a match finishes, both partners should be moved to the end of the client list.</p>
+
+<h3>Combat</h3>
+
+<p>When two players are matched, they combat until one loses all their hitpoints or one of the players drops. Players take turns attacking. Call the currently-attacking player the <b>active</b> player. Only the active player can yell. Any text sent by the inactive player should be discarded. Any invalid commands sent by the active player should also be discarded. (This includes hitting <tt>p</tt> when no powermoves are available.)</p>
+
+<p>You are encouraged to mess around with these parameters, but here is what I used:
+<ul>
+<li>Each player starts a match with between 20 and 30 hitpoints. (Note that hitpoints and powermoves are reset to random values on the start of a new match independent of what the values may have been following their previous match.)
+<li>Each player starts a match with between one and three powermoves.
+<li>Damage from a regular attack is 2-6 hitpoints.
+<li>Powermoves have a 50% chance of missing. If they hit, then they cause three times the damage of a regular attack.
+</ul>
+
+<p>The active player should be sent a menu of valid commands before each move. The <tt>p</tt> command should not be printed (or accepted) if the player has no powermoves remaining.</p>
+
+<p>To generate random numbers, use <tt>srand</tt> once on program entry to seed the random number generator and then keep calling <tt>rand</tt> to get random numbers. King 10.2 contains an example of doing this.</p>
+
+<h3>Dropping</h3>
+
+<p>When a client drops, advertise to everyone else that the client is gone. If the dropped client was engaged in a match, the opponent should be notified as the winner and told that they are awaiting a new opponent. The match involving the dropped client should be removed.</p>
+
+<h3>Using <code>Select</code></h3>
+
+<p>The server must never block waiting for input from a particular client or the listening socket. (After all, it can't know whether a client will talk next or whether a new client will connect. And, in the former case, it can't know <b>which</b> client will talk next.) This means that you must use <code>select</code> rather than blocking on one file descriptor.</p>
+ 
+<h3>Makefile</h3>
+
+<p>Create a makefile that compiles a program called <tt>battleserver</tt>. In addition to building your code, your makefile must permit choosing a port at compile-time. To do this, first add a <code>#define</code> to your program to define the port number on which the server will expect connections (to be safe, choose a number <tt>x</tt> between 10000 and 32767): 
+<pre>
+#ifndef PORT
+  #define PORT &lt;x&gt;
+#endif
+</pre>
+
+Then, in your makefile, include the following code, where <tt>y</tt> should be set to a number possibly different from <tt>x</tt>:
+<pre>
+PORT=&lt;y&gt;
+CFLAGS= -DPORT=\$(PORT) -g -Wall
+</pre>
+
+<p>Now, if you type <code>make PORT=1500</code> the program will be compiled with <code>PORT</code> defined as <code>1500</code>. If you type just <code>make</code>, <code>PORT</code> will be set to <code>y</code> as defined in the makefile. Finally, if you use <code>gcc</code> directly and do not use <code>-D</code> to supply a port number, it will still have the <code>x</code> value from your source code file. This method of setting a port value will make it possible for us to test your code by compiling with our desired port number. (It's also useful for you to know how to use <code>-D</code> to define macros at commandline.)</p>
+
+<h2>Sample Server</h2>
+
+<p>Here is a <a href="http://www.dgp.toronto.edu/~ajr/209/a4/muffinman.c">sample server</a> written by Alan Rosenthal that you might find helpful. Feel free to yank code from there, with two important provisos:
+<ul>
+<li>Don't copy-and-paste stuff into your program and then fuss with it to make it work. You should know exactly what the code does and why. We won't take kindly to extra garb in your code that is unnecessary or does not work, and is clearly a stayover from the sample server.
+<li>Clearly indicate the code that you took from the sample server.
+</ul>
+
+<h2>Testing</h2>
+
+<p>Since you're not writing a client program, the <code>nc</code> tool mentioned above can be used to connect clients to your server. Your server is required to work in noncanonical mode (<tt>stty -icanon</tt>); we will test in this mode. For completeness, you might also wish to test in canonical mode (<tt>stty icanon</tt>). We won't explicitly be testing in this mode, but problems here might indicate unfounded assumptions in your server.</p>
+
+<p>Note that on CDF, you should run <tt>nc</tt> as <code>/bin/nc</code> (not just <tt>nc</tt>), because you might have another unrelated <code>nc</code> earlier in your path.</p>
+
+<p>To use <tt>nc</tt>, type <code>/bin/nc redwolf.cdf.utoronto.ca xxx</code>, where <code>xxx</code> is the port on which your server is listening. Your server might also be listening on <code>greywolf</code>; check the shell prompt in the window on which you run the server. If you are sure that the server and client are both on the same server, you can use <tt>localhost</tt> in place of <tt>redwolf</tt> or <tt>greywolf</tt>.</p>
+
+<h2>What to submit</h2>
+
+<p>You will commit to your repository in the <tt>a4</tt> directory all <tt>.h</tt> and <tt>.c</tt> files, and your makefile.</p>
+
+<p>Make sure that you've done <tt>svn add</tt> on every file. Check from within MarkUs, or checkout your repository into a new directory, to verify that everything is there. There's nothing we can do if you forget to submit a file.</p>
+
+</div>
+
+</body>
+</html>
